@@ -1,4 +1,4 @@
-const CACHE = "vault-v1";
+const CACHE = "vault-v2";
 const ASSETS = [
   "./index.html", "./manifest.json",
   "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-maskable.png"
@@ -17,9 +17,13 @@ self.addEventListener("activate", (e) => {
   );
 });
 
-// cache-first for app shell, network fallback
+// Only handle same-origin app-shell requests.
+// Cross-origin requests (Google Apps Script sync, fonts) pass straight through —
+// the service worker must never touch them, or JSONP/API calls break.
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
+  const url = new URL(e.request.url);
+  if (url.origin !== self.location.origin) return; // let the network handle it
   e.respondWith(
     caches.match(e.request).then((hit) =>
       hit || fetch(e.request).then((res) => {
@@ -31,15 +35,12 @@ self.addEventListener("fetch", (e) => {
   );
 });
 
-// best-effort daily nudge (Chrome Android, app installed)
 self.addEventListener("periodicsync", (e) => {
   if (e.tag === "daily-nudge") {
     e.waitUntil(
       self.registration.showNotification("Log today's spending", {
         body: "A quick tap keeps your streak alive and your fund on track.",
-        icon: "icons/icon-192.png",
-        badge: "icons/icon-192.png",
-        tag: "daily-nudge"
+        icon: "icons/icon-192.png", badge: "icons/icon-192.png", tag: "daily-nudge"
       })
     );
   }
