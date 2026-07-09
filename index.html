@@ -873,11 +873,17 @@ function pullFromSheet(silent){
   }).catch(function(){ if(!silent) toast("Couldn't reach the sheet — check the URL"); });
 }
 function pushAll(){
-  if(!DB.settings.sheetUrl){ toast("Add your sheet URL first"); return; }
+  if(!DB.settings.sheetUrl){ toast("Connect your sheet first"); return; }
+  toast("Sending to sheet…");
   pushOps({upserts:DB.tx.map(toSheetTx), plan:planPayload()}).then(function(){
-    DB.settings.lastSync=new Date().toLocaleString("en-IN"); save(); updateSyncStatus();
-    toast("Pushed everything to your sheet");
-  }).catch(function(){ toast("Push failed — check the URL"); });
+    setTimeout(function(){
+      jsonp(DB.settings.sheetUrl).then(function(d){
+        var n=(d.transactions||[]).length;
+        DB.settings.lastSync=new Date().toLocaleString("en-IN"); save(); updateSyncStatus();
+        toast("Sheet now has "+n+" "+(n===1?"entry":"entries"));
+      }).catch(function(){ toast("Sent, but can't read the sheet back — check URL & access"); });
+    },1600);
+  }).catch(function(){ toast("Couldn't reach the sheet"); });
 }
 
 /* ---------------- theme ---------------- */
