@@ -827,9 +827,9 @@ function jsonp(url){
   });
 }
 function pushOps(ops){
-  if(!DB.settings.sheetUrl) return Promise.resolve();
-  return fetch(DB.settings.sheetUrl,{method:"POST",mode:"no-cors",
-    headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify(ops)});
+  if(!DB.settings.sheetUrl) return Promise.resolve(null);
+  var u=DB.settings.sheetUrl+"?payload="+encodeURIComponent(JSON.stringify(ops));
+  return jsonp(u);
 }
 function pullFromSheet(silent){
   if(!DB.settings.sheetUrl){ if(!silent) toast("Add your sheet URL first"); return Promise.resolve(); }
@@ -838,8 +838,7 @@ function pullFromSheet(silent){
                      (!data.plan || data.plan.income===undefined || data.plan.income==="");
     if(sheetEmpty){
       // fresh sheet: seed it from the app instead of wiping local data
-      pushOps({upserts:DB.tx.map(toSheetTx), plan:planPayload()});
-      DB.settings.lastSync=new Date().toLocaleString("en-IN"); save(); updateSyncStatus();
+      pushAll(true);
       if(!silent) toast("Sheet set up from the app");
       return;
     }
@@ -872,18 +871,18 @@ function pullFromSheet(silent){
     if(!silent) toast("Pulled latest from your sheet");
   }).catch(function(){ if(!silent) toast("Couldn't reach the sheet — check the URL"); });
 }
-function pushAll(){
-  if(!DB.settings.sheetUrl){ toast("Connect your sheet first"); return; }
-  toast("Sending to sheet…");
-  pushOps({upserts:DB.tx.map(toSheetTx), plan:planPayload()}).then(function(){
-    setTimeout(function(){
-      jsonp(DB.settings.sheetUrl).then(function(d){
-        var n=(d.transactions||[]).length;
-        DB.settings.lastSync=new Date().toLocaleString("en-IN"); save(); updateSyncStatus();
-        toast("Sheet now has "+n+" "+(n===1?"entry":"entries"));
-      }).catch(function(){ toast("Sent, but can't read the sheet back — check URL & access"); });
-    },1600);
-  }).catch(function(){ toast("Couldn't reach the sheet"); });
+function pushAll(quiet){
+  if(!DB.settings.sheetUrl){ if(!quiet) toast("Connect your sheet first"); return; }
+  if(!quiet) toast("Sending to sheet…");
+  var batches=[]; for(var i=0;i<DB.tx.length;i+=20) batches.push(DB.tx.slice(i,i+20).map(toSheetTx));
+  var seq=Promise.resolve(null);
+  batches.forEach(function(b){ seq=seq.then(function(){ return pushOps({upserts:b}); }); });
+  seq=seq.then(function(){ return pushOps({plan:planPayload()}); });
+  seq.then(function(data){
+    var n=(data&&data.transactions)?data.transactions.length:0;
+    DB.settings.lastSync=new Date().toLocaleString("en-IN"); save(); updateSyncStatus();
+    if(!quiet) toast("Sheet now has "+n+" "+(n===1?"entry":"entries"));
+  }).catch(function(){ if(!quiet) toast("Couldn't reach the sheet — check URL & access"); });
 }
 
 /* ---------------- theme ---------------- */
