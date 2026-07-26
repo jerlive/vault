@@ -1,4 +1,4 @@
-const CACHE = "vault-v2";
+const CACHE = "vault-v3";
 const ASSETS = [
   "./index.html", "./manifest.json",
   "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-maskable.png"
@@ -17,13 +17,27 @@ self.addEventListener("activate", (e) => {
   );
 });
 
-// Only handle same-origin app-shell requests.
-// Cross-origin requests (Google Apps Script sync, fonts) pass straight through —
-// the service worker must never touch them, or JSONP/API calls break.
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
   const url = new URL(e.request.url);
-  if (url.origin !== self.location.origin) return; // let the network handle it
+  if (url.origin !== self.location.origin) return; // never touch Google/API/font traffic
+
+  const isDoc = e.request.mode === "navigate" ||
+                url.pathname.endsWith("/") || url.pathname.endsWith("index.html");
+
+  if (isDoc) {
+    // network-first: always try to get the latest page, fall back to cache offline
+    e.respondWith(
+      fetch(e.request).then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put("./index.html", copy)).catch(() => {});
+        return res;
+      }).catch(() => caches.match("./index.html"))
+    );
+    return;
+  }
+
+  // other assets: cache-first
   e.respondWith(
     caches.match(e.request).then((hit) =>
       hit || fetch(e.request).then((res) => {
